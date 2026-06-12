@@ -57,19 +57,20 @@ while(file != ''):
         a = x
         comp_title = 'X'
 
-    a_np = np.array(a)[:len(a)//2]; 
-    a_t = np.linspace(0, len(a)*w, len(a))[:len(a)//2] #Tempo de cada amostra, recuperado do período de amostragem w
+    a_np = np.array(a); 
+    a_t = np.linspace(0, len(a)*w, len(a)) #Tempo de cada amostra, recuperado do período de amostragem w
 
-    pwm_level = file.split('/')[-1]
-    pwm_level = pwm_level.split('.')[0]
-    pwm_level = pwm_level.split('m')[1]
-    if 'n' in pwm_level:
-        pwm_level = pwm_level.replace('n', '-')
+    ##pwm_level = file.split('/')[-1]
+    #pwm_level = pwm_level.split('.')[0]
+    #pwm_level = pwm_level.split('m')[1]
+    #if 'n' in pwm_level:
+    #    pwm_level = pwm_level.replace('n', '-')
 
     plt.figure()
     plt.plot(a_t, a_np, 'k')
-    plt.title('Componente '+comp_title+', Aceleração (m/s\u00B2) vs. Tempo (s), Nível PWM: '+pwm_level)
-    plt.savefig("/home/gabs/Documents/Pibic/RelacoesPWM/SIGNAL"+comp_title+file.split('/')[-1].replace(".txt",".pdf"))
+    plt.title('Componente '+comp_title+', Aceleração (m/s\u00B2) vs. Tempo (s)), Nível PWM: ')
+              #+pwm_level)
+    #plt.savefig("/home/gabs/Documents/Pibic/RelacoesPWM/SIGNAL"+comp_title+file.split('/')[-1].replace(".txt",".pdf"))
     plt.show()
 
     file = input("NEXT FILE PATH? (Empty to exit program)");

@@ -107,6 +107,6 @@ port_name = input("PORT?")
 x, y, z, w = batchReadSerial(port_name, 115200)
 interval = w/1000
 
-#file_name = input("FILE PATH?")
-#saveFileSignal(file_name, x, y, z, interval)
+file_name = input("FILE PATH?")
+saveFileSignal(file_name, x, y, z, interval)
 print("Finished")
