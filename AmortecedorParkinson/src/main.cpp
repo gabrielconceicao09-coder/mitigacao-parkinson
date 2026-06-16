@@ -19,11 +19,11 @@ float deltat;
 float sinal_pid;
 
 int controle_pid(float Kp, float Ki, float Kd, float * ac_ref, float * AcZ_ms){
-    erro = &ac_ref - &AcZ_ms;
+    erro = *ac_ref - *AcZ_ms;
     deltaerro = erro - erro_anterior;
     erro_anterior = erro;
     t_controle = micros();
-    deltat = (float) (t_controle - t_controle_anterior)/1000000; //segundos
+    deltat = (float) (t_controle - t_controle_anterior)/1000000.0; //segundos
     t_controle_anterior = t_controle;
     derivada = deltaerro/deltat;
     integral += erro*deltat;
