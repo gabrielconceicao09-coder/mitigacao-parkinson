@@ -1,11 +1,19 @@
 #include <Arduino.h>
 #include <Servo.h>
-#include "leitura_mpu.h"
 #include <Wire.h>
 #include <cppQueue.h>
 
-#define MPU_INT_PIN 3
 #define SERVO_CONTROL 10
+#define AFS_SEL 0 //Configuração do acelerômetro AFS_SEL (0: +/-2g; 1: +/-4g; 2: +/-8g)
+#define DLPF_SEL 2 //Filtro passa-baixa DLPF_SEL (0: BW 260 Hz; 1: BW 184 Hz; 2: BW 94 Hz; 3: BW 44 Hz; 4: BW 21 Hz; 5: BW 10 Hz, 6: BW 5 Hz)
+
+int controle_pid(float Kp, float Ki, float Kd, float * ac_ref, float * AcZ_ms);
+void init_MPU6050();
+void Calc_Grvt(int acx, int acy, int acz, float* pAcX_ms, float* pAcY_ms, float* pAcZ_ms);
+void leituraMPU_ISR();
+void leituraMPU();
+void Calib_MPU6050();
+void Gravity_Range_Option();
 
 //Controle PID
 float erro;
@@ -17,6 +25,53 @@ unsigned long t_controle; //micros
 unsigned long t_controle_anterior = micros();
 float deltat;
 float sinal_pid;
+float ac_ref = 0;
+const float Kp = 1;
+const float Ki = 1;
+const float Kd = 0;
+
+//Leitura MPU
+const int MPU_ADDR = 0x68;  // Endereço I2C do MPU-6050
+const float aceleracao_g = 9.81;
+float Grvt_unit;  // Unidade de gravidade
+float Cal_AcX;
+float Cal_AcY;
+float Cal_AcZ;
+int acX, acY, acZ; // Variáveis para leitura da aceleração
+unsigned long t_medidas;
+float AcX_ms, AcY_ms, AcZ_ms;
+unsigned long t_stamp;
+unsigned long t0, t;
+
+//Servomotor
+Servo servomotor;
+int angulo_servo = 90;
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Setup...");
+  pinMode(SERVO_CONTROL, OUTPUT);
+  servomotor.attach(SERVO_CONTROL, 1000, 2000); //Largura para posição 0 graus 1ms posição 180 graus 2ms
+  init_MPU6050();
+  Gravity_Range_Option();
+  Calib_MPU6050();
+  Serial.println("Setup finalizado.");
+};
+
+
+void loop() {
+  leituraMPU();
+  Calc_Grvt(acX, acY, acZ, &AcX_ms, &AcY_ms, &AcZ_ms);
+  Serial.print("AcX = "); Serial.print(AcX_ms);  Serial.print("m/s^2");
+  Serial.print(" | AcY = "); Serial.print(AcY_ms);  Serial.print("m/s^2");
+  Serial.print(" | AcZ = "); Serial.print(AcZ_ms);  Serial.println("m/s^2");
+  angulo_servo = controle_pid(Kp, Ki, Kd, &ac_ref, &AcZ_ms);
+  servomotor.write(angulo_servo);
+}
+
+
+//Controle PID =================================================================================
+//=======================================================================================
 
 int controle_pid(float Kp, float Ki, float Kd, float * ac_ref, float * AcZ_ms){
     erro = *ac_ref - *AcZ_ms;
@@ -34,37 +89,16 @@ int controle_pid(float Kp, float Ki, float Kd, float * ac_ref, float * AcZ_ms){
 };
 
 
-//Leitura do MPU
-const int MPU_ADDR = 0x68;  // Endereço I2C do MPU-6050
-const float aceleracao_g = 9.81;
-
-float Grvt_unit;  // Unidade de gravidade
-float Cal_AcX;
-float Cal_AcY;
-float Cal_AcZ;
-
-int acX, acY, acZ; // Variáveis para leitura da aceleração
-cppQueue bufferAc(sizeof(int));
-unsigned long t_medidas;
-cppQueue bufferT(sizeof(unsigned long));
-
-int AcX, AcY, AcZ; //Variáveis para cálculos e transmissão
-float AcX_ms, AcY_ms, AcZ_ms;
-unsigned long t_stamp;
-
-unsigned long t0, t;
-
-#define AFS_SEL 0  // Configuração do acelerômetro (+/-2g)
-#define DLPF_SEL 2 // Filtro passa-baixa (2: BW 94 Hz; 3: BW 44 Hz)
-
+//Leitura do MPU =================================================================================
+//==============================================================================================
 
 void init_MPU6050() {
+  Serial.println("Inicialização do MPU6050...");
   // Inicialização e reset do MPU6050
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x6B);  // PWR_MGMT_1 register
   Wire.write(0);     // Acorda o MPU-6050
   Wire.endTransmission(true);
-
   // Configuração do clock
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x6B);
@@ -91,18 +125,7 @@ void init_MPU6050() {
   else if (DLPF_SEL == 5) Wire.write(0x05);  // BW 10Hz
   else Wire.write(0x06);  // BW 5Hz
   Wire.endTransmission(true);
-
-  //Configuração do pino de interrupt INT
-  Wire.beginTransmission(MPU_ADDR);
-  Wire.write(0x37); //Registrador INT_PIN_CFG
-  Wire.write(0x10); // Configura bit INT_RD_CLEAR para 1, liberando o interrupt em qualquer operação de leitura
-  Wire.endTransmission(true);
-
-  //Configuração dos eventos de interrupt para que ele sinalize sempre que as medidas estiverem prontas
-  Wire.beginTransmission(MPU_ADDR);
-  Wire.write(0x38); // Registrador INT_ENABLE
-  Wire.write(0x01); // Configura bit DATA_RDY_EN para 1. INT gera um pulso quando uma rodada de medidas está pronta
-  Wire.endTransmission(true);
+  Serial.println("Inicialização do MPU6050 finalizada");
 }
 
 void Calc_Grvt(int acx, int acy, int acz, float* pAcX_ms, float* pAcY_ms, float* pAcZ_ms) {
@@ -127,7 +150,9 @@ void Calc_Grvt(int acx, int acy, int acz, float* pAcX_ms, float* pAcY_ms, float*
   return;
 }
 
-void leituraMPU_ISR(){ //Serviço de interrupt acionado pelo pino INT
+
+void leituraMPU(){
+  Serial.println("leituraMPU chamada...");
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x3B);  // Começa no registro 0x3B (ACCEL_XOUT_H)
   Wire.endTransmission(false);
@@ -136,26 +161,16 @@ void leituraMPU_ISR(){ //Serviço de interrupt acionado pelo pino INT
   acY = Wire.read() << 8 | Wire.read();  // 0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
   acZ = Wire.read() << 8 | Wire.read();  // 0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
   t_medidas = millis();
-  bufferAc.push(&acX); bufferAc.push(&acY); bufferAc.push(&acZ);
-  bufferT.push(&t_medidas);
 }
 
 void Calib_MPU6050() {
   Serial.println("Iniciando calibragem...");
   int count = 0;
-  for (; t-t0 < 2000; t = millis()){
-    if (bufferAc.getCount() >= 3 && bufferT.getCount() >= 1){
-      noInterrupts();
-      bufferAc.pop(&AcX);
-      bufferAc.pop(&AcY);
-      bufferAc.pop(&AcZ);
-      bufferT.pop(&t_stamp);
-      interrupts();
-      Cal_AcX += AcX;
-      Cal_AcY += AcY;
-      Cal_AcZ += AcZ;
-      count ++;
-    }
+  for (; count < 200; count++){
+    leituraMPU();
+    Cal_AcX += acX;
+    Cal_AcY += acY;
+    Cal_AcZ += acZ;
   }
   // Calcula médias de calibração
   Cal_AcX /= count;
@@ -182,41 +197,5 @@ void Gravity_Range_Option() {
     case 3:
       Grvt_unit = 2048;
       break;
-  }
-}
-
-Servo servomotor;
-
-void setup() {
-  Serial.begin(115200);
-  pinMode(MPU_INT_PIN, INPUT);
-  pinMode(SERVO_CONTROL, OUTPUT);
-  servomotor.attach(10, 1000, 2000); //Largura para posição 0 graus 1ms posição 180 graus 2ms
-  init_MPU6050();
-  attachInterrupt(digitalPinToInterrupt(MPU_INT_PIN), leituraMPU_ISR, RISING);
-  Gravity_Range_Option();
-  Calib_MPU6050();
-};
-
-int angulo_servo = 90;
-float ac_ref = 0;
-const float Kp = 1;
-const float Ki = 1;
-const float Kd = 0;
-
-void loop() {
-  if (bufferAc.getCount() > 3 && bufferT.getCount() > 1){ //Controle atualiza somente quando há medidas nos buffers
-    noInterrupts();
-    bufferAc.pop(&AcX);
-    bufferAc.pop(&AcY);
-    bufferAc.pop(&AcZ);
-    bufferT.pop(&t_stamp);
-    interrupts();
-    Calc_Grvt(AcX, AcY, AcZ, &AcZ_ms, &AcZ_ms, &AcZ_ms);
-    Serial.print("AcX = "); Serial.print(AcX_ms);  Serial.print("m/s^2");
-    Serial.print(" | AcY = "); Serial.print(AcY_ms);  Serial.print("m/s^2");
-    Serial.print(" | AcZ = "); Serial.print(AcZ_ms);  Serial.println("m/s^2");
-    angulo_servo = controle_pid(Kp, Ki, Kd, &ac_ref, &AcZ_ms);
-    servomotor.write(angulo_servo);
   }
 }

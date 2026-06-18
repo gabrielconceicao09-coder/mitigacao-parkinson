@@ -1,11 +1,26 @@
 /*#include <Arduino.h>
 #include "leitura_mpu.h"
 
-#define AFS_SEL 0  // Configuração do acelerômetro (+/-2g)
-#define DLPF_SEL 2 // Filtro passa-baixa (2: BW 94 Hz; 3: BW 44 Hz)
+const int MPU_ADDR = 0x68;  // Endereço I2C do MPU-6050
+const float aceleracao_g = 9.81;
 
+float Grvt_unit;  // Unidade de gravidade
+float Cal_AcX;
+float Cal_AcY;
+float Cal_AcZ;
 
-void init_MPU6050() {
+int acX, acY, acZ; // Variáveis para leitura da aceleração
+cppQueue bufferAc(sizeof(int));
+unsigned long t_medidas;
+cppQueue bufferT(sizeof(unsigned long));
+
+int AcX, AcY, AcZ; //Variáveis para cálculos e transmissão
+float AcX_ms, AcY_ms, AcZ_ms;
+unsigned long t_stamp;
+
+unsigned long t0, t;
+
+void init_MPU6050(int AFS_SEL, int DLPF_SEL) {
   // Inicialização e reset do MPU6050
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x6B);  // PWR_MGMT_1 register
@@ -115,7 +130,7 @@ void Calib_MPU6050() {
 }
 
 
-void Gravity_Range_Option() {
+void Gravity_Range_Option(int AFS_SEL) {
   switch (AFS_SEL) {  // Seleciona unidade de gravidade (LSB/g)
     case 0:
       Grvt_unit = 16384;
@@ -130,5 +145,4 @@ void Gravity_Range_Option() {
       Grvt_unit = 2048;
       break;
   }
-}
-*/
+}*/

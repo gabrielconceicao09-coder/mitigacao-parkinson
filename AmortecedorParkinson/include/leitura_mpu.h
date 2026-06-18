@@ -6,33 +6,18 @@
 #include <cppQueue.h>
 
 //Leitura do MPU
-const int MPU_ADDR = 0x68;  // Endereço I2C do MPU-6050
-const float aceleracao_g = 9.81;
 
-float Grvt_unit;  // Unidade de gravidade
-float Cal_AcX;
-float Cal_AcY;
-float Cal_AcZ;
 
-int acX, acY, acZ; // Variáveis para leitura da aceleração
-cppQueue bufferAc(sizeof(int));
-unsigned long t_medidas;
-cppQueue bufferT(sizeof(unsigned long));
-
-int AcX, AcY, AcZ; //Variáveis para cálculos e transmissão
-float AcX_ms, AcY_ms, AcZ_ms;
-unsigned long t_stamp;
-
-unsigned long t0, t;
-
-void init_MPU6050(); //inicializa mpu
+void init_MPU6050(int AFS_SEL, int DLPF_SEL); //inicializa mpu, acessando registrador que acorda o sensor, aplicando configurações escolhidas.
+//Configuração do acelerômetro AFS_SEL (0: +/-2g; 1: +/-4g; 2: +/-8g)
+//Filtro passa-baixa DLPF_SEL (0: BW 260 Hz; 1: BW 184 Hz; 2: BW 94 Hz; 3: BW 44 Hz; 4: BW 21 Hz; 5: BW 10 Hz, 6: BW 5 Hz)
 
 void Calc_Grvt(int acx, int acy, int acz, float* pAcX_ms, float* pAcY_ms, float* pAcZ_ms); //calcula gravidade em m/s^2
 
-void leituraMPU_ISR(); //Serviço de interrupt acionado pelo pino INT
+void leituraMPU_ISR(); //Serviço de interrupt acionado pelo pino INT, obtem as medidas de aceleração;
 
-void Calib_MPU6050();
+void Calib_MPU6050(); //Lê o sensor por alguns segundos e aplica calibração para remover offsets.
 
-void Gravity_Range_Option();
+void Gravity_Range_Option(int AFS_SEL); //
 
 #endif*/
