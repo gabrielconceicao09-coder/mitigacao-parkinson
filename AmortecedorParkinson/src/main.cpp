@@ -7,7 +7,8 @@
 #define AFS_SEL 0 //Configuração do acelerômetro AFS_SEL (0: +/-2g; 1: +/-4g; 2: +/-8g)
 #define DLPF_SEL 2 //Filtro passa-baixa DLPF_SEL (0: BW 260 Hz; 1: BW 184 Hz; 2: BW 94 Hz; 3: BW 44 Hz; 4: BW 21 Hz; 5: BW 10 Hz, 6: BW 5 Hz)
 
-int controle_pid(float Kp, float Ki, float Kd, float * ac_ref, float * AcZ_ms);
+int controle_pid(float Kp, float Ki, float Kd, float Kg, float * ac_ref, float * AcZ_ms);
+float zonaMorta(float sinal, float limite);
 void init_MPU6050();
 void Calc_Grvt(int acx, int acy, int acz, float* pAcX_ms, float* pAcY_ms, float* pAcZ_ms);
 void leituraMPU_ISR();
@@ -26,9 +27,10 @@ unsigned long t_controle_anterior = micros();
 float deltat;
 float sinal_pid;
 float ac_ref = 0;
-const float Kp = 1;
-const float Ki = 1;
-const float Kd = 0;
+float Kp = 3;
+float Ki = 1;
+float Kd = 0;
+float Kg = 10;
 
 //Leitura MPU
 const int MPU_ADDR = 0x68;  // Endereço I2C do MPU-6050
@@ -51,7 +53,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Setup...");
   pinMode(SERVO_CONTROL, OUTPUT);
-  servomotor.attach(SERVO_CONTROL, 1000, 2000); //Largura para posição 0 graus 1ms posição 180 graus 2ms
+  servomotor.attach(SERVO_CONTROL, 420, 2400);
   init_MPU6050();
   Gravity_Range_Option();
   Calib_MPU6050();
@@ -62,10 +64,13 @@ void setup() {
 void loop() {
   leituraMPU();
   Calc_Grvt(acX, acY, acZ, &AcX_ms, &AcY_ms, &AcZ_ms);
-  Serial.print("AcX = "); Serial.print(AcX_ms);  Serial.print("m/s^2");
-  Serial.print(" | AcY = "); Serial.print(AcY_ms);  Serial.print("m/s^2");
-  Serial.print(" | AcZ = "); Serial.print(AcZ_ms);  Serial.println("m/s^2");
-  angulo_servo = controle_pid(Kp, Ki, Kd, &ac_ref, &AcZ_ms);
+  //Serial.print("AcX = "); Serial.print(AcX_ms);  Serial.print("m/s^2");
+  //Serial.print(" | AcY = "); Serial.print(AcY_ms);  Serial.print("m/s^2");
+  //Serial.print(" | AcZ = "); Serial.print(AcZ_ms);  Serial.println("m/s^2");
+  if (Serial.available()){
+    Kg = Serial.parseFloat();
+  }
+  angulo_servo = controle_pid(Kp, Ki, Kd, Kg, &ac_ref, &AcZ_ms);
   servomotor.write(angulo_servo);
 }
 
@@ -73,8 +78,9 @@ void loop() {
 //Controle PID =================================================================================
 //=======================================================================================
 
-int controle_pid(float Kp, float Ki, float Kd, float * ac_ref, float * AcZ_ms){
+int controle_pid(float Kp, float Ki, float Kd, float Kg, float * ac_ref, float * AcZ_ms){
     erro = *ac_ref - *AcZ_ms;
+    erro = zonaMorta(erro, 0.001);
     deltaerro = erro - erro_anterior;
     erro_anterior = erro;
     t_controle = micros();
@@ -83,10 +89,25 @@ int controle_pid(float Kp, float Ki, float Kd, float * ac_ref, float * AcZ_ms){
     derivada = deltaerro/deltat;
     integral += erro*deltat;
     sinal_pid = Kp*erro + Ki*integral + Kd*derivada;
+    Serial.print(">Erro:"); Serial.print(erro, 6); Serial.print(",Deltat:"); Serial.print(deltat, 8);
+    Serial.print(",Integral:"); Serial.print(integral, 8); Serial.print(",Saida PID:"); Serial.print(sinal_pid);
     int angulo = (int) constrain(sinal_pid, -90.0, 90.0); //Saturação
+    angulo *= Kg;
     angulo += 90; //offset para conformidade com biblioteca Servo do Arduino
+    Serial.print(",Angulo:"); Serial.println(angulo);
     return angulo;
 };
+
+float zonaMorta(float sinal, float limite){
+  if (sinal < 0){
+    if (sinal >= -1*limite) return 0.0;
+    else return sinal;
+  }
+  else {
+    if (sinal <= limite) return 0.0;
+    else return sinal;
+  }
+}
 
 
 //Leitura do MPU =================================================================================
@@ -152,7 +173,7 @@ void Calc_Grvt(int acx, int acy, int acz, float* pAcX_ms, float* pAcY_ms, float*
 
 
 void leituraMPU(){
-  Serial.println("leituraMPU chamada...");
+  //Serial.println("leituraMPU chamada...");
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x3B);  // Começa no registro 0x3B (ACCEL_XOUT_H)
   Wire.endTransmission(false);
